@@ -22,54 +22,159 @@ def get_cv(X, y):
     return cv.split(X, y)
 
 # Function to load and process data
-def load_data(path='.', file='DS_RP_EMPLOI_LR_PRINC.csv', diplome_file='DS_RP_DIPLOMES.csv', satisfaction_file='DS_SRCV_SATISFACTION.csv', test_size=0.2, random_state=42):
+def load_data(
+    path=".",
+    file="Demandeurs_emploi_ moins_25.csv",
+    formation_file="Formation_demandeur_emploi.csv",
+    job_file="Offre_emploi.csv",
+    manpower_file="Besoins_main_oeuvre.csv",
+    recruitment_file="Recrutement_difficile.csv",
+    test_size=0.2,
+    random_state=42
+):
     path = Path(path) / "data"
-    df = pd.read_csv(path / file, sep=";")  # Load employment data
-    df_diplomes = pd.read_csv(path / diplome_file, sep=";")  # Load diploma data
-    df_satisfaction = pd.read_csv(path / satisfaction_file, sep=";")  # Load satisfaction data
+    
+    # Charger les fichiers CSV
+    df = pd.read_csv(path / file, sep=";", encoding="utf-8")  
+    df_courses = pd.read_csv(path / formation_file, sep=";", encoding="utf-8")  
+    df_job = pd.read_csv(path / job_file, sep=";", encoding="utf-8")  
+    df_manpower = pd.read_csv(path / manpower_file, sep=";", encoding="utf-8")  
+    df_recruitment = pd.read_csv(path / recruitment_file, sep=";", encoding="utf-8")  
 
-    # Clean column names
+    # Nettoyage des noms de colonnes pour éviter les erreurs
     df.columns = df.columns.str.replace('"', '').str.strip()
-    df_diplomes.columns = df_diplomes.columns.str.replace('"', '').str.strip()
-    df_satisfaction.columns = df_satisfaction.columns.str.replace('"', '').str.strip()
+    df_courses.columns = df_courses.columns.str.replace('"', '').str.strip()
+    df_job.columns = df_job.columns.str.replace('"', '').str.strip()
 
-    # Convert OBS_VALUE to float (handling comma as decimal separator)
-    df['OBS_VALUE'] = df['OBS_VALUE'].str.replace(',', '.').astype(float)
-    df_diplomes['OBS_VALUE'] = df_diplomes['OBS_VALUE'].str.replace(',', '.').astype(float)
-    df_satisfaction['OBS_VALUE'] = df_satisfaction['OBS_VALUE'].str.replace(',', '.').astype(float)
+    # ======= TRAITEMENT DES DONNÉES PRINCIPALES =======
+    # Renommer la colonne des mois pour plus de clarté
+    df.rename(columns={'Mois': 'TIME_PERIOD'}, inplace=True)
 
-    # Keep only rows where EMPSTA_ENQ == "2"
-    df = df[df['EMPSTA_ENQ'] == "2"]
-    
-    # Remove rows where SEX is different from "_T" using .query()
-    df = df.query("SEX != '_T'")
-    
-    # Drop EMPSTA_ENQ column as it's now redundant
-    df = df.drop(columns=['EMPSTA_ENQ'])
-    
-    # Process diploma data
-    df_diplomes = df_diplomes[df_diplomes['SEX'] != '_T']  # Remove total SEX category
-    df_diplomes_pivot = df_diplomes.pivot_table(values='OBS_VALUE', index=['GEO', 'TIME_PERIOD', 'SEX'], columns='EDUC', aggfunc='first')
-    df_diplomes_pivot.columns = [f"EDUC_{col}" for col in df_diplomes_pivot.columns]
-    df_diplomes_pivot.reset_index(inplace=True)
+    # Extraire et convertir l'année
+    df['TIME_PERIOD'] = df['TIME_PERIOD'].str.extract(r'(\d{2})$')[0]
+    df = df.dropna(subset=['TIME_PERIOD'])
+    df['TIME_PERIOD'] = df['TIME_PERIOD'].astype(int)
+    df['TIME_PERIOD'] = df['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
 
-    # Merge employment data with diploma data
-    df = df.merge(df_diplomes_pivot, on=['GEO', 'TIME_PERIOD', 'SEX'], how='left')
+    # Conversion en format long
+    df = df.melt(id_vars=["TIME_PERIOD"], var_name="GEO", value_name="OBS_VALUE")
+    df["GEO"] = df["GEO"].str.extract(r'(\d{2})$')
+    df["OBS_VALUE"] = df["OBS_VALUE"].str.replace(r"[^\d.]", "", regex=True)
+    df["OBS_VALUE"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
+    df = df.dropna()
+    df = df.groupby(["TIME_PERIOD", "GEO"], as_index=False)["OBS_VALUE"].mean()
 
-    # Process satisfaction data (keeping only relevant columns)
-    df_satisfaction = df_satisfaction[['TIME_PERIOD', 'SRCV_SATISFNOTE', 'OBS_VALUE']]
-    df_satisfaction_pivot = df_satisfaction.pivot_table(values='OBS_VALUE', index=['TIME_PERIOD'], columns='SRCV_SATISFNOTE', aggfunc='first')
-    df_satisfaction_pivot.columns = [f"SATISF_{col}" for col in df_satisfaction_pivot.columns]
-    df_satisfaction_pivot.reset_index(inplace=True)
+    # ======= TRAITEMENT DES FORMATIONS =======
+    df_courses.rename(columns={'Mois': 'TIME_PERIOD'}, inplace=True)
+    df_courses['TIME_PERIOD'] = df_courses['TIME_PERIOD'].str.extract(r'(\d{2})$')[0]
+    df_courses = df_courses.dropna(subset=['TIME_PERIOD'])
+    df_courses['TIME_PERIOD'] = df_courses['TIME_PERIOD'].astype(int)
+    df_courses['TIME_PERIOD'] = df_courses['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
 
-    # Merge satisfaction data
-    df = df.merge(df_satisfaction_pivot, on=['TIME_PERIOD'], how='left')
+    df_long = df_courses.melt(id_vars=["TIME_PERIOD"], var_name="GEO", value_name="number_courses")
+    df_long["GEO"] = df_long["GEO"].str.extract(r'(\d{2})$')
+    df_long["number_courses"] = df_long["number_courses"].str.replace(r"[^\d.]", "", regex=True)
+    df_long["number_courses"] = pd.to_numeric(df_long["number_courses"], errors="coerce")
+    df_formation = df_long.groupby(["TIME_PERIOD", "GEO"], as_index=False)["number_courses"].mean()
 
-    # Split target variable
-    y = df['OBS_VALUE']  # This is the target column
-    X_df = df.drop(columns=['OBS_VALUE'])  # Drop target from features
+    df = df.merge(df_formation, on=['GEO', 'TIME_PERIOD'], how='inner')
 
-    # Split data into train and test sets
+    # ======= TRAITEMENT DES OFFRES D'EMPLOI =======
+    df_job.rename(columns={'Trimestre': 'TIME_PERIOD'}, inplace=True)
+    df_job['TIME_PERIOD'] = df_job['TIME_PERIOD'].str.extract(r'(\d{2})$')[0]
+    df_job = df_job.dropna(subset=['TIME_PERIOD'])
+    df_job['TIME_PERIOD'] = df_job['TIME_PERIOD'].astype(int)
+    df_job['TIME_PERIOD'] = df_job['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
+
+    df_long = df_job.melt(id_vars=["TIME_PERIOD"], var_name="GEO", value_name="job_offer")
+    df_long["GEO"] = df_long["GEO"].str.extract(r'(\d{2})$')
+    df_long["job_offer"] = df_long["job_offer"].str.replace(r"[^\d.]", "", regex=True)
+    df_long["job_offer"] = pd.to_numeric(df_long["job_offer"], errors="coerce")
+    df_job_offer = df_long.groupby(["TIME_PERIOD", "GEO"], as_index=False)["job_offer"].mean()
+
+    df = df.merge(df_job_offer, on=['GEO', 'TIME_PERIOD'], how='inner')
+
+    # ======= TRAITEMENT DES NOUVEAUX DATASETS =======
+    def process_transposed_data(df, value_name):
+        """ Fonction pour traiter uniquement les fichiers à transposer """
+        df = df.T.reset_index()
+        df.columns = df.iloc[0]
+        df = df[1:].reset_index(drop=True)
+
+        df.rename(columns={'Département': 'TIME_PERIOD'}, inplace=True)
+
+        df['TIME_PERIOD'] = df['TIME_PERIOD'].str.extract(r'(\d{2})$')[0]
+        df = df.dropna(subset=['TIME_PERIOD'])
+        df['TIME_PERIOD'] = df['TIME_PERIOD'].astype(int)
+        df['TIME_PERIOD'] = df['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
+
+        df_long = df.melt(id_vars=["TIME_PERIOD"], var_name="GEO", value_name=value_name)
+        df_long["GEO"] = df_long["GEO"].str.extract(r'(\d{2})$')
+        df_long[value_name] = df_long[value_name].str.replace(r"[^\d.]", "", regex=True)
+        df_long[value_name] = pd.to_numeric(df_long[value_name], errors="coerce")
+
+        return df_long.groupby(["TIME_PERIOD", "GEO"], as_index=False)[value_name].mean()
+
+    df_manpower = process_transposed_data(df_manpower, "need_for_manpower")
+    df_recruitment = process_transposed_data(df_recruitment, "difficult_recruitment")
+
+    # Fusionner les nouvelles features
+    df = df.merge(df_manpower, on=['GEO', 'TIME_PERIOD'], how='inner')
+    df = df.merge(df_recruitment, on=['GEO', 'TIME_PERIOD'], how='inner')
+
+    # Charger le fichier CSV 
+    path = Path('.') / "data"
+    df_out = pd.read_csv(path / "Sortie_liste_France_Travail.csv", sep=";", encoding="utf-8")  # Load data
+
+
+    # Renommer la colonne des trimestres pour plus de clarté
+    df_out.rename(columns={'Trimestre': 'TIME_PERIOD'}, inplace=True)
+    df_out.rename(columns={"Nombre de demandeurs d'emploi sortis": 'out_of_list'}, inplace=True)
+
+    # Extraire l'année et convertir correctement
+    df_out['TIME_PERIOD'] = df_out['TIME_PERIOD'].str.extract(r'(\d{2})$')[0]
+    df_out = df_out.dropna(subset=['TIME_PERIOD'])  # Suppression des NaN
+    df_out['TIME_PERIOD'] = df_out['TIME_PERIOD'].astype(int)  # Conversion en entier
+    df_out['TIME_PERIOD'] = df_out['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
+
+
+    # Convertir OBS_VALUE en numérique (au cas où il y a des espaces ou erreurs)
+    df_out["out_of_list"] = df_out["out_of_list"].str.replace(r"[^\d.]", "", regex=True)  # Supprime espaces & caractères spéciaux
+    df_out["out_of_list"] = pd.to_numeric(df_out["out_of_list"], errors="coerce")
+
+    # Calculer la moyenne annuelle par département
+    df_final = df_out.groupby(["TIME_PERIOD"], as_index=False)["out_of_list"].sum()
+    df = df.merge(df_final, on="TIME_PERIOD", how="inner")
+
+    # Charger le fichier CSV 
+    path = Path('.') / "data"
+    df_entry = pd.read_csv(path / "Entres_listes_France_Travail.csv", sep=";", encoding="utf-8")  # Load data
+
+
+    # Renommer la colonne des trimestres pour plus de clarté
+    df_entry.rename(columns={'Trimestre': 'TIME_PERIOD'}, inplace=True)
+    df_entry.rename(columns={"Nombre de demandeurs d'emploi entrés": 'entry_on_list'}, inplace=True)
+
+    # Extraire l'année et convertir correctement
+    df_entry['TIME_PERIOD'] = df_entry['TIME_PERIOD'].str.extract(r'(\d{2})$')[0]
+    df_entry = df_entry.dropna(subset=['TIME_PERIOD'])  # Suppression des NaN
+    df_entry['TIME_PERIOD'] = df_entry['TIME_PERIOD'].astype(int)  # Conversion en entier
+    df_entry['TIME_PERIOD'] = df_entry['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
+
+
+    # Convertir OBS_VALUE en numérique (au cas où il y a des espaces ou erreurs)
+    df_entry["entry_on_list"] = df_entry["entry_on_list"].str.replace(r"[^\d.]", "", regex=True)  # Supprime espaces & caractères spéciaux
+    df_entry["entry_on_list"] = pd.to_numeric(df_entry["entry_on_list"], errors="coerce")
+
+    # Calculer la moyenne annuelle par département
+    df_final = df_entry.groupby(["TIME_PERIOD"], as_index=False)["entry_on_list"].sum()
+    df = df.merge(df_final, on="TIME_PERIOD", how="inner")
+
+    # Séparer les features et la cible
+    y = df['OBS_VALUE']  # Variable cible
+    X_df = df.drop(columns=['OBS_VALUE'])  # Features
+
+    # Division en ensembles d'entraînement et de test
     X_train, X_test, y_train, y_test = train_test_split(X_df, y, test_size=test_size, random_state=random_state)
 
     return X_train, X_test, y_train, y_test
