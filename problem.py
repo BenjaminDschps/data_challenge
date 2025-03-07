@@ -29,6 +29,9 @@ def load_data(
     job_file="Offre_emploi.csv",
     manpower_file="Besoins_main_oeuvre.csv",
     recruitment_file="Recrutement_difficile.csv",
+    pop_2010_file = "population_2010.xls",
+    pop_2015_file = "population_2015.xls",
+    pop_2021_file = "population_2021.xlsx",
     test_size=0.2,
     random_state=42
 ):
@@ -137,7 +140,6 @@ def load_data(
     df_out['TIME_PERIOD'] = df_out['TIME_PERIOD'].astype(int)  # Conversion en entier
     df_out['TIME_PERIOD'] = df_out['TIME_PERIOD'].apply(lambda x: x + 1900 if x >= 90 else x + 2000)
 
-
     # Convertir OBS_VALUE en numérique (au cas où il y a des espaces ou erreurs)
     df_out["out_of_list"] = df_out["out_of_list"].str.replace(r"[^\d.]", "", regex=True)  # Supprime espaces & caractères spéciaux
     df_out["out_of_list"] = pd.to_numeric(df_out["out_of_list"], errors="coerce")
@@ -169,6 +171,43 @@ def load_data(
     # Calculer la moyenne annuelle par département
     df_final = df_entry.groupby(["TIME_PERIOD"], as_index=False)["entry_on_list"].sum()
     df = df.merge(df_final, on="TIME_PERIOD", how="inner")
+
+    
+
+    # ============== Populations par départements ================
+
+    df_pop_2010 = pd.read_excel(path / pop_2010_file, header=7, sheet_name='Départements')
+    df_pop_2015 = pd.read_excel(path / pop_2015_file, header=7, sheet_name='Départements')
+    df_pop_2021 = pd.read_excel(path / pop_2021_file, header=7, sheet_name='Départements')
+
+    # Population 2010
+    df = df.merge(df_pop_2010[['Code département', 'Population totale']], 
+                left_on='GEO', 
+                right_on='Code département', 
+                how='left')
+
+    df.drop(columns=['Code département'], inplace=True)
+    df.rename(columns={'Population totale':'population_dept_2010'}, inplace=True)
+
+    # Population 2015    
+    df = df.merge(df_pop_2015[['Code département', 'Population totale']], 
+                left_on='GEO', 
+                right_on='Code département', 
+                how='left')
+
+    df.drop(columns=['Code département'], inplace=True)
+    df.rename(columns={'Population totale':'population_dept_2015'}, inplace=True)
+    
+    # Population 2021
+    df = df.merge(df_pop_2015[['Code département', 'Population totale']], 
+                left_on='GEO', 
+                right_on='Code département', 
+                how='left')
+
+    df.drop(columns=['Code département'], inplace=True)
+    df.rename(columns={'Population totale':'population_dept_2021'}, inplace=True)
+
+    # ============== Création de X_df et y ==================
 
     # Séparer les features et la cible
     y = df['OBS_VALUE']  # Variable cible
