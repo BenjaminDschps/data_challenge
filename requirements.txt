@@ -3,3 +3,5 @@ numpy
 pandas
 matplotlib
 scikit-learn
+xlrd 
+openpyxl

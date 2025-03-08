@@ -7,6 +7,8 @@ dependencies:
   - numpy
   - pandas
   - scikit-learn>=1.4
+  - xlrd 
+  - openpyxl
   - pip
   - pip:
     - ramp-workflow
