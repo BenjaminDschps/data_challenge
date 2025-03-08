@@ -29,11 +29,9 @@ def load_data(
     job_file="Offre_emploi.csv",
     manpower_file="Besoins_main_oeuvre.csv",
     recruitment_file="Recrutement_difficile.csv",
-    pop_2010_file = "population_2010.xls",
-    pop_2015_file = "population_2015.xls",
-    pop_2021_file = "population_2021.xlsx",
-    test_size=0.2,
-    split_year=2022,
+    file_populations = 'data/estim-pop-dep-sexe-gca-1975-2023.xls',
+    first_year=2015, 
+    last_year=2023,
     random_state=42
 ):
     path = Path(path) / "data"
@@ -173,40 +171,23 @@ def load_data(
     df_final = df_entry.groupby(["TIME_PERIOD"], as_index=False)["entry_on_list"].sum()
     df = df.merge(df_final, on="TIME_PERIOD", how="inner")
 
-    
-
     # ============== Populations par départements ================
 
-    df_pop_2010 = pd.read_excel(path / pop_2010_file, header=7, sheet_name='Départements')
-    df_pop_2015 = pd.read_excel(path / pop_2015_file, header=7, sheet_name='Départements')
-    df_pop_2021 = pd.read_excel(path / pop_2021_file, header=7, sheet_name='Départements')
+    list_df_pop = []
+    interval_years = list(range(first_year, last_year+1))
+    dic_rename = {'Unnamed: 0': 'GEO', 'Unnamed: 1': 'Nom', 'Total':'population'}
+    cols = ['GEO', 'Nom', 'population', 'TIME_PERIOD']
 
-    # Population 2010
-    df = df.merge(df_pop_2010[['Code département', 'Population totale']], 
-                left_on='GEO', 
-                right_on='Code département', 
-                how='left')
+    for year in interval_years:
+        df_pop_tmp = pd.read_excel(file_populations, skiprows=4, header=0, sheet_name=str(year), nrows=96)
+        df_pop_tmp['TIME_PERIOD'] = year    
+        df_pop_tmp = df_pop_tmp.rename(columns=dic_rename)
+        df_pop_tmp = df_pop_tmp[cols]
+        list_df_pop.append(df_pop_tmp)
 
-    df.drop(columns=['Code département'], inplace=True)
-    df.rename(columns={'Population totale':'population_dept_2010'}, inplace=True)
-
-    # Population 2015    
-    df = df.merge(df_pop_2015[['Code département', 'Population totale']], 
-                left_on='GEO', 
-                right_on='Code département', 
-                how='left')
-
-    df.drop(columns=['Code département'], inplace=True)
-    df.rename(columns={'Population totale':'population_dept_2015'}, inplace=True)
+    df_pop = pd.concat(list_df_pop, ignore_index=True)
     
-    # Population 2021
-    df = df.merge(df_pop_2021[['Code département', 'Population totale']], 
-                left_on='GEO', 
-                right_on='Code département', 
-                how='left')
-
-    df.drop(columns=['Code département'], inplace=True)
-    df.rename(columns={'Population totale':'population_dept_2021'}, inplace=True)
+    df = df.merge(df_pop[['TIME_PERIOD', 'GEO', 'population']], on=["TIME_PERIOD", "GEO"], how="left")
 
     # ============== Création de X_df et y ==================
 
@@ -218,8 +199,8 @@ def load_data(
     # X_train, X_test, y_train, y_test = train_test_split(X_df, y, test_size=test_size, random_state=random_state)
     
     # Train-Test split based on 'year'
-    train_data = df[df["TIME_PERIOD"] <= split_year]
-    test_data = df[df["TIME_PERIOD"] > split_year]
+    train_data = df[df["TIME_PERIOD"] < last_year]
+    test_data = df[df["TIME_PERIOD"] >= last_year]
 
     # Define features and target variable
     X_train, y_train = train_data.drop(columns=["OBS_VALUE"]), train_data["OBS_VALUE"]
