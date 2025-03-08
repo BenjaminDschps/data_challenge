@@ -33,6 +33,7 @@ def load_data(
     pop_2015_file = "population_2015.xls",
     pop_2021_file = "population_2021.xlsx",
     test_size=0.2,
+    split_year=2022,
     random_state=42
 ):
     path = Path(path) / "data"
@@ -210,11 +211,19 @@ def load_data(
     # ============== Création de X_df et y ==================
 
     # Séparer les features et la cible
-    y = df['OBS_VALUE']  # Variable cible
-    X_df = df.drop(columns=['OBS_VALUE'])  # Features
+    # y = df['OBS_VALUE']  # Variable cible
+    # X_df = df.drop(columns=['OBS_VALUE'])  # Features
 
     # Division en ensembles d'entraînement et de test
-    X_train, X_test, y_train, y_test = train_test_split(X_df, y, test_size=test_size, random_state=random_state)
+    # X_train, X_test, y_train, y_test = train_test_split(X_df, y, test_size=test_size, random_state=random_state)
+    
+    # Train-Test split based on 'year'
+    train_data = df[df["TIME_PERIOD"] <= split_year]
+    test_data = df[df["TIME_PERIOD"] > split_year]
+
+    # Define features and target variable
+    X_train, y_train = train_data.drop(columns=["OBS_VALUE"]), train_data["OBS_VALUE"]
+    X_test, y_test = test_data.drop(columns=["OBS_VALUE"]), test_data["OBS_VALUE"]
 
     return X_train, X_test, y_train, y_test
 
