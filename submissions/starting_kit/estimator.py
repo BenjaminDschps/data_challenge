@@ -2,7 +2,8 @@
 
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.linear_model import LinearRegression
+# from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.compose import make_column_transformer
 from sklearn.impute import SimpleImputer
 
@@ -24,7 +25,7 @@ def get_estimator():
     pipe = make_pipeline(
         transformer,
         SimpleImputer(strategy='most_frequent'),
-        LinearRegression()
+        RandomForestRegressor(n_estimators=50)
     )
 
     return pipe
