@@ -199,7 +199,7 @@ def load_data(
     df.rename(columns={'Population totale':'population_dept_2015'}, inplace=True)
     
     # Population 2021
-    df = df.merge(df_pop_2015[['Code département', 'Population totale']], 
+    df = df.merge(df_pop_2021[['Code département', 'Population totale']], 
                 left_on='GEO', 
                 right_on='Code département', 
                 how='left')
